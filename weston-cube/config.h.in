@@ -1,0 +1,7 @@
+#mesondefine HAVE_JPEG
+
+#mesondefine HAVE_GBM_BO_MAP
+
+#mesondefine HAVE_GST
+
+#mesondefine ENABLE_EGL

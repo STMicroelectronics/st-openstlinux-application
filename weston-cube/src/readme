@@ -1,0 +1,8 @@
+Somes files come from kmscube (git://anongit.freedesktop.org/mesa/kmscube):
+- cube-smooth.c
+- cube-tex.c
+- cube-video.c
+- esTransform.c
+- esUtil.h
+- gst-decoder.c
+

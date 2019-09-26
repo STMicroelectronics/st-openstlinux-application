@@ -1,0 +1,129 @@
+# To use with a SDK
+# make -f Makefile.sdk
+#
+CC ?= gcc
+
+CFLAGS?=-std=c11 -Wall -Werror -O3 -fvisibility=hidden
+CFLAGS+= -DHAVE_CONFIG_H
+
+CFLAGS_ADDONS = -Iprotocol/ -Ishared/ -I.
+CFLAGS_ADDONS += $(CFLAGS)
+
+LDFLAGS_ADDONS = -lm $(LDFLAGS)
+
+# wayland-client
+CFLAGS_ADDONS += $(shell pkg-config --cflags wayland-client)
+LDFLAGS_ADDONS += $(shell pkg-config --libs wayland-client)
+
+# wayland-cursor
+CFLAGS_ADDONS += $(shell pkg-config --cflags wayland-cursor)
+LDFLAGS_ADDONS += $(shell pkg-config --libs wayland-cursor)
+
+# wayland-egl
+CFLAGS_ADDONS += $(shell pkg-config --cflags wayland-egl)
+LDFLAGS_ADDONS += $(shell pkg-config --libs wayland-egl)
+
+# wayland scanner
+wayland_scanner = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
+WAYLAND_PROTOCOLS_DATADIR = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
+
+# libdrm for drm_fourcc
+CFLAGS_ADDONS += $(shell pkg-config --cflags libdrm)
+
+# gbm
+CFLAGS_ADDONS += $(shell pkg-config --cflags gbm)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gbm)
+
+# pixman
+CFLAGS_ADDONS += $(shell pkg-config --cflags pixman-1)
+LDFLAGS_ADDONS += $(shell pkg-config --libs pixman-1)
+
+# libjpeg
+CFLAGS_ADDONS += $(shell pkg-config --cflags libjpeg)
+LDFLAGS_ADDONS += $(shell pkg-config --libs libjpeg)
+
+# libpng
+CFLAGS_ADDONS += $(shell pkg-config --cflags libpng)
+LDFLAGS_ADDONS += $(shell pkg-config --libs libpng)
+
+# EGL
+CFLAGS_ADDONS += $(shell pkg-config --cflags egl)
+LDFLAGS_ADDONS += $(shell pkg-config --libs egl)
+# GLESv2
+CFLAGS_ADDONS += $(shell pkg-config --cflags glesv2)
+LDFLAGS_ADDONS += $(shell pkg-config --libs glesv2)
+
+# gstreamer
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-1.0)
+
+# gstreamer video
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-video-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-video-1.0)
+
+# gstreamer app
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-app-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-app-1.0)
+
+# gstreamer app
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-allocators-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-allocators-1.0)
+
+# gstreamer plugins base
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-plugins-base-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-plugins-base-1.0)
+
+# glib
+CFLAGS_ADDONS += $(shell pkg-config --cflags glib-2.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs glib-2.0)
+
+LDFLAGS_ADDONS += -lpthread
+
+EXE = weston-st-egl-cube-tex
+
+SOURCES = \
+		  protocol/xdg-shell-unstable-v6-protocol.c \
+		  protocol/xdg-shell-unstable-v6-client-protocol.h	\
+		  protocol/linux-dmabuf-unstable-v1-protocol.c		\
+		  protocol/linux-dmabuf-unstable-v1-client-protocol.h \
+		  \
+		  shared/image-loader.c \
+		  src/simple-st-egl-tex.c	\
+		  src/cube-common.c	\
+		  src/cube-tex.c	\
+		  src/cube-smooth.c	\
+		  src/esTransform.c \
+		  \
+		  src/cube-video.c	\
+		  src/gst-decoder.c
+
+OBJ = $(SOURCES:.c=.o)
+
+all: $(EXE)
+
+weston-st-egl-cube-tex: $(OBJ)
+	@echo "#########generete $@######################"
+	$(CC) -o $@ $^ $(LDFLAGS_ADDONS)
+
+clean:
+	rm -f *.o src/*.o $(EXE) config.h
+	rm -rf protocol/*protocol.*
+
+protocol/xdg-shell-unstable-v6-protocol.c: $(WAYLAND_PROTOCOLS_DATADIR)/unstable/xdg-shell/xdg-shell-unstable-v6.xml
+	mkdir -p $(dir $@) && $(wayland_scanner) code < $< > $@
+protocol/xdg-shell-unstable-v6-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/unstable/xdg-shell/xdg-shell-unstable-v6.xml
+	mkdir -p $(dir $@) && $(wayland_scanner) client-header < $< > $@
+
+protocol/linux-dmabuf-unstable-v1-protocol.c: $(WAYLAND_PROTOCOLS_DATADIR)/unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml
+	mkdir -p $(dir $@) && $(wayland_scanner) code < $< > $@
+protocol/linux-dmabuf-unstable-v1-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml
+	mkdir -p $(dir $@) && $(wayland_scanner) client-header < $< > $@
+
+config.h:
+	echo "#define HAVE_GST 1" > config.h
+	echo "#define HAVE_GBM_BO_MAP 1" >> config.h
+	echo "#define ENABLE_EGL 1" >> config.h
+	echo "#define HAVE_JPEG 1" >> config.h
+
+%.o: %.c config.h
+	$(CC) -o $@ -c $< $(CFLAGS_ADDONS)
