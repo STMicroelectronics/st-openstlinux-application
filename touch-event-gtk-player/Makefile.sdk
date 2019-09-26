@@ -1,0 +1,59 @@
+# To use with a SDK
+# make -f Makefile.sdk
+#
+CC ?= gcc
+
+CFLAGS?=-std=c11 -Wall -Werror -O3 -fvisibility=hidden
+
+CFLAGS_ADDONS = -I.
+CFLAGS_ADDONS += $(CFLAGS)
+
+LDFLAGS_ADDONS = -lm $(LDFLAGS)
+
+# GTK+3
+CFLAGS_ADDONS += $(shell pkg-config --cflags gtk+-3.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gtk+-3.0)
+
+# gstreamer
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-1.0)
+
+# gstreamer video
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-video-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-video-1.0)
+
+# gstreamer wayland
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-wayland-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-wayland-1.0)
+
+# gstreamer plugins base
+CFLAGS_ADDONS += $(shell pkg-config --cflags gstreamer-plugins-base-1.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs gstreamer-plugins-base-1.0)
+
+# glib
+CFLAGS_ADDONS += $(shell pkg-config --cflags glib-2.0)
+LDFLAGS_ADDONS += $(shell pkg-config --libs glib-2.0)
+
+
+CFLAGS_ADDONS += -DHAVE_GST
+LDFLAGS_ADDONS += -lpthread
+
+EXE = custom-gst-player
+
+SOURCES = \
+		  main.c
+
+OBJ = $(SOURCES:.c=.o)
+
+all: $(EXE)
+
+custom-gst-player: $(OBJ)
+	@echo "#########generete $@######################"
+	$(CC) -o $@ $^ $(LDFLAGS_ADDONS)
+
+clean:
+	rm -f *.o src/*.o $(EXE)
+
+
+%.o: %.c
+	$(CC) -o $@ -c $< $(CFLAGS_ADDONS)
