@@ -24,6 +24,7 @@ endif
 dep_gst_video = dependency('gstreamer-video-1.0', version: '>= 1.14.0')
 dep_gst_wayland = dependency('gstreamer-wayland-1.0', version: '>= 1.14.0')
 dep_gst_base = dependency('gstreamer-plugins-base-1.0', version: '>= 1.14.0')
+dep_wayland = dependency('wayland-client', version: '>= 1.17.0')
 dep_glib = dependency('glib-2.0', version: '>= 2.58.0')
 dep_threads = dependency('threads')
 libm = cc.find_library('m', required : false)
@@ -33,7 +34,7 @@ tegp_sources = [
 ]
 srcinc = include_directories('.')
 
-exe_deps = [dep_gtk3, dep_gst, dep_gst_video, dep_gst_wayland, dep_gst_base, dep_glib, dep_threads, libm]
+exe_deps = [dep_gtk3, dep_gst, dep_gst_video, dep_gst_wayland, dep_gst_base, dep_wayland, dep_glib, dep_threads, libm]
 
 executable('touch-event-gtk-player',
 	tegp_sources,
