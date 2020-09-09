@@ -62,7 +62,7 @@ GST_DEBUG_CATEGORY(cube_video_debug);
 
 #define DRM_RENDER_NODE "/dev/dri/card0"
 
-#define CUBE_VERSION "20190801"
+#define CUBE_VERSION "20200908"
 
 static int running = 1;
 

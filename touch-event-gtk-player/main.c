@@ -55,6 +55,8 @@ typedef struct
 	gchar **argv;
 	gint current_uri;             /* index for argv */
 	gboolean to_start;
+	gint video_width;
+	gint video_height;
 } DemoApp;
 
 static void
@@ -151,16 +153,16 @@ pointer_handle_axis(void *data, struct wl_pointer *wl_pointer,
 }
 
 static const struct wl_pointer_listener pointer_listener = {
-    pointer_handle_enter,
-    pointer_handle_leave,
-    pointer_handle_motion,
-    pointer_handle_button,
-    pointer_handle_axis,
+	pointer_handle_enter,
+	pointer_handle_leave,
+	pointer_handle_motion,
+	pointer_handle_button,
+	pointer_handle_axis,
 };
 static void
 touch_handle_down(void *data, struct wl_touch *wl_touch,
-    uint32_t serial, uint32_t time, struct wl_surface *surface,
-    int32_t id, wl_fixed_t x_w, wl_fixed_t y_w)
+	uint32_t serial, uint32_t time, struct wl_surface *surface,
+	int32_t id, wl_fixed_t x_w, wl_fixed_t y_w)
 {
 	struct _gtk_wayland_for_event* this = (struct _gtk_wayland_for_event*) data;
 	guint32 diff;
@@ -330,14 +332,14 @@ msg_structure_change (DemoApp *d)
 	video_size.width = video_size.height = 0;
 
 	sink = gst_bin_get_by_name(GST_BIN(d->pipeline), "waylandsink0");
-	pad = gst_element_get_static_pad (sink, "sink");
+	pad = gst_element_get_static_pad (GST_ELEMENT(sink), "sink");
 
-	caps = gst_pad_get_current_caps (pad);
+	caps = gst_pad_get_current_caps (GST_PAD(pad));
 	if (!caps)
-		caps = gst_pad_query_caps (pad, NULL);
+		caps = gst_pad_query_caps (GST_PAD(pad), NULL);
 
-	for (i = 0; i < gst_caps_get_size (caps); i++) {
-		GstStructure *structure = gst_caps_get_structure (caps, i);
+	for (i = 0; i < gst_caps_get_size(caps); i++) {
+		GstStructure *structure = gst_caps_get_structure(caps, i);
 		g_print ("******%s\n", gst_structure_get_name (structure));
 		gst_structure_foreach (structure, print_field, &video_size);
 	}
@@ -349,6 +351,8 @@ msg_structure_change (DemoApp *d)
 		gtk_widget_set_size_request (d->window_widget, video_size.width, video_size.height);
 	}
 	g_print("-----------main:set size to %d %d \n", video_size.width, video_size.height );
+	d->video_width = video_size.width;
+	d->video_height = video_size.height;
 
 	gst_caps_unref (caps);
 	gst_object_unref (pad);
@@ -390,24 +394,37 @@ msg_state_changed (GstBus * bus, GstMessage * message, gpointer user_data)
 	}
 }
 
-static void
-error_cb (GstBus * bus, GstMessage * msg, gpointer user_data)
+int
+gstreamer_bus_callback (struct _GstBus * bus, GstMessage * message, void *data)
 {
-	DemoApp *d = user_data;
-	gchar *debug = NULL;
-	GError *err = NULL;
+	DemoApp *d = data;
 
-	gst_message_parse_error (msg, &err, &debug);
+	g_print ("Got %s message\n", GST_MESSAGE_TYPE_NAME (message));
 
-	g_print ("Error: %s\n", err->message);
-	g_error_free (err);
+	switch (GST_MESSAGE_TYPE (message)) {
+	case GST_MESSAGE_ERROR:{
+		GError *err;
+		gchar *debug;
 
-	if (debug) {
-		g_print ("Debug details: %s\n", debug);
-		g_free (debug);
+		gst_message_parse_error (message, &err, &debug);
+		g_print ("Error: %s\n", err->message);
+		g_error_free (err);
+		if (debug) {
+			g_print ("Debug details: %s\n", debug);
+			g_free (debug);
+		}
+		gst_element_set_state (d->pipeline, GST_STATE_NULL);
+		break;
 	}
 
-	gst_element_set_state (d->pipeline, GST_STATE_NULL);
+	case GST_MESSAGE_STATE_CHANGED:
+		msg_state_changed (bus, message, data);
+		break;
+	default:
+		/* unhandled message */
+		break;
+	}
+	return TRUE;
 }
 
 
@@ -509,57 +526,6 @@ touch_notify_event_cb (GtkWidget      *widget,
 	/* We've handled it, stop processing */
 	return TRUE;
 }
-static gboolean
-event_cb (GtkWidget      *widget,
-	   GdkEvent *event,
-	   gpointer        data)
-{
-	DemoApp *d = data;
-	guint32 diff;
-	guint32 current_time = 0;
-	GstState actual_state;
-
-	g_print("--> %s\n", __FUNCTION__);
-	switch(event->type) {
-	case GDK_TOUCH_BEGIN:
-		current_time = event->touch.time;
-		break;
-	case GDK_BUTTON_PRIMARY:
-		current_time = event->button.time;
-		break;
-	default:
-		return TRUE;
-	}
-
-	if (last_touch_tap == 0) {
-		last_touch_tap = current_time;
-		gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
-		if (actual_state == GST_STATE_PAUSED)
-			gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-		else
-			gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
-	} else {
-		diff = current_time - last_touch_tap;
-		if (last_touch_tap != 0) {
-			last_touch_tap = current_time;
-			if (diff < 600) {
-				g_print("--> DOUBLE TAP\n");
-				gst_element_set_state (d->pipeline, GST_STATE_NULL);
-				gtk_main_quit();
-			} else {
-				gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
-				if (actual_state == GST_STATE_PAUSED)
-					gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-				else
-					gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
-				g_print("--> SIMPLE TAP\n");
-			}
-			g_print("--> BEGIN diff = %d\n", diff);
-		}
-	}
-	/* We've handled it, stop processing */
-	return TRUE;
-}
 
 static GstBusSyncReply
 bus_sync_handler (GstBus * bus, GstMessage * message, gpointer user_data)
@@ -630,11 +596,22 @@ video_widget_draw_cb (GtkWidget * widget, cairo_t * cr, gpointer user_data)
 
 	gtk_widget_get_allocation (widget, &allocation);
 
-	//g_print ("draw_cb x %d, y %d, w %d, h %d\n",
-	//    allocation.x, allocation.y, allocation.width, allocation.height);
+	g_print ("draw_cb x %d, y %d, w %d, h %d\n",
+	    allocation.x, allocation.y, allocation.width, allocation.height);
 
 	if (d->overlay) {
-		gst_video_overlay_set_render_rectangle (d->overlay, allocation.x,
+
+//		gst_video_overlay_set_render_rectangle (d->overlay, allocation.x,
+//							allocation.y, allocation.width, allocation.height);
+		if (nofullscreen) {
+			int x, y;
+			x = allocation.x + (allocation.width - d->video_width)/2;
+			y = allocation.y + (allocation.height - d->video_height)/2;
+			gst_video_overlay_set_render_rectangle (d->overlay, x,
+								y, d->video_width, d->video_height);
+		}
+        else
+			gst_video_overlay_set_render_rectangle (d->overlay, allocation.x,
 							allocation.y, allocation.width, allocation.height);
 	}
 
@@ -653,13 +630,30 @@ build_window (DemoApp * d)
 	/* windows */
 	d->window_widget = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title (GTK_WINDOW(d->window_widget), "GStreamer Wayland GTK ");
+	gtk_window_set_transient_for (GTK_WINDOW(d->window_widget), NULL);
 	g_signal_connect (GTK_WINDOW(d->window_widget), "destroy", G_CALLBACK (gtk_main_quit), NULL);
-	if (!nofullscreen)
+	//if (!nofullscreen)
 		gtk_window_fullscreen(GTK_WINDOW(d->window_widget));
-	else {
-		//gtk_window_maximize(GTK_WINDOW(d->window_widget));
-		gtk_window_set_decorated (GTK_WINDOW(d->window_widget), FALSE);
-	}
+	//else {
+	//	gtk_window_set_decorated (GTK_WINDOW(d->window_widget), FALSE);
+	//}
+
+	/* styling background color to black */
+	GtkCssProvider* provider = gtk_css_provider_new();
+
+	char *data = "#transparent_bg,GtkDrawingArea {\n"
+			"    background-color: rgba (88%, 88%, 88%, 1.0);\n"
+			"}";
+
+	gtk_css_provider_load_from_data(provider, data, -1, NULL);
+	gtk_style_context_add_provider(gtk_widget_get_style_context(d->window_widget),
+                                   GTK_STYLE_PROVIDER(provider),
+                                   GTK_STYLE_PROVIDER_PRIORITY_USER);
+
+	g_object_unref(provider);
+
+	gtk_widget_set_name(d->window_widget, "transparent_bg");
+
 
 	d->video_widget = gtk_event_box_new ();
 	gtk_widget_set_support_multidevice (d->video_widget, TRUE);
@@ -668,6 +662,7 @@ build_window (DemoApp * d)
 	gtk_widget_set_vexpand (d->video_widget, TRUE);
 	g_signal_connect (d->video_widget, "draw",
 					  G_CALLBACK (video_widget_draw_cb), d);
+
 
 	gtk_container_add(GTK_CONTAINER (d->window_widget), d->video_widget);
 	gtk_widget_show (d->video_widget);
@@ -762,6 +757,7 @@ main (int argc, char **argv)
 	GOptionContext *context;
 	GstBus *bus;
 	GError *error = NULL;
+	guint bus_watch_id;
 
 	gtk_init (&argc, &argv);
 	gst_init (&argc, &argv);
@@ -844,9 +840,7 @@ main (int argc, char **argv)
 	}
 
 	bus = gst_pipeline_get_bus (GST_PIPELINE (d->pipeline));
-	//gst_bus_add_watch (bus, msg_cb, d);
-	g_object_connect (bus, "message::error", G_CALLBACK (error_cb), d);
-	g_object_connect (bus, "message::state-changed", G_CALLBACK (msg_state_changed), d);
+	bus_watch_id = gstreamer_bus_callback (bus, gstreamer_bus_callback, NULL);
 	gst_bus_set_sync_handler (bus, bus_sync_handler, d, NULL);
 	gst_object_unref (bus);
 
@@ -864,17 +858,17 @@ main (int argc, char **argv)
 
 		switch (state){
 		case GST_STATE_VOID_PENDING:
-			g_print("cpr state: GST_STATE_VOID_PENDING\n");break;
+			g_print("state: GST_STATE_VOID_PENDING\n");break;
 		case GST_STATE_NULL:
-			g_print("cpr state: GST_STATE_NULL\n");break;
+			g_print("state: GST_STATE_NULL\n");break;
 		case GST_STATE_READY:
-			g_print("cpr state: GST_STATE_READY\n");
+			g_print("state: GST_STATE_READY\n");
 			break;
 		case GST_STATE_PAUSED:
-			g_print("cpr state: GST_STATE_PAUSED\n");
+			g_print("state: GST_STATE_PAUSED\n");
 			break;
 		case GST_STATE_PLAYING:
-			g_print("cpr state: GST_STATE_PLAYING\n");
+			g_print("state: GST_STATE_PLAYING\n");
 			break;
 		default:
 			break;
@@ -930,6 +924,7 @@ main (int argc, char **argv)
 	gst_element_set_state (d->pipeline, GST_STATE_NULL);
 	gst_object_unref (d->pipeline);
 	g_object_unref (d->window_widget);
+	g_source_remove (bus_watch_id);
 	g_slice_free (DemoApp, d);
 
 	g_free(graph);

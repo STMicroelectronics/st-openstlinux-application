@@ -385,6 +385,7 @@ buf_to_fd(struct decoder *dec, int size, void *ptr)
 		bo_map->map[i] = map;
 		bo_map->map_data[i] = map_data;
 		bo_map->fd[i] = fd;
+		bo_map->bo[i] = bo;
 
 		printf("Create [%d] +-> bo     = %p\n", i, bo);
 		printf("            |-> fd     = %i\n", fd);
@@ -571,23 +572,17 @@ video_frame(struct decoder *dec)
 
 void video_deinit(struct decoder *dec)
 {
-	set_last_frame(dec, NULL, NULL);
-	gst_element_set_state(dec->pipeline, GST_STATE_NULL);
-	gst_object_unref(dec->sink);
-	gst_object_unref(dec->pipeline);
-	g_main_loop_quit(dec->loop);
-	g_main_loop_unref(dec->loop);
-	pthread_join(dec->gst_thread, 0);
-
 #if HAVE_GBM_BO_MAP
 	unsigned int i;
 	for (i = 0; i< MAX_NUM_PLANES; i++) {
-		if (dec->gdm_bo_map.map[i] == NULL) {
+		if (dec->gdm_bo_map.map[i] != NULL) {
+			close(dec->gdm_bo_map.fd[i]);
+
 			gbm_bo_unmap(dec->gdm_bo_map.bo[i],
 				     dec->gdm_bo_map.map_data[i]);
+			
 			gbm_bo_destroy(dec->gdm_bo_map.bo[i]);
 
-			close(dec->gdm_bo_map.fd[i]);
 		}
 
 		dec->gdm_bo_map.fd[i] = -1;
@@ -597,5 +592,14 @@ void video_deinit(struct decoder *dec)
 	}
 	dec->gdm_bo_map.fd_index = 0;
 #endif
+
+	set_last_frame(dec, NULL, NULL);
+	gst_element_set_state(dec->pipeline, GST_STATE_NULL);
+	gst_object_unref(dec->sink);
+	gst_object_unref(dec->pipeline);
+	g_main_loop_quit(dec->loop);
+	g_main_loop_unref(dec->loop);
+	pthread_join(dec->gst_thread, 0);
+
 	free(dec);
 }
