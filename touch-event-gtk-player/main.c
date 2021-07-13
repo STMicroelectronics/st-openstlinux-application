@@ -131,7 +131,8 @@ pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
 			if (diff < 600) {
 				//g_print("--> DOUBLE TAP\n");
 				gst_element_set_state (this->d->pipeline, GST_STATE_NULL);
-				gtk_main_quit();
+				g_main_loop_quit (loop);
+				exit(1);
 				last_pointer_tap = 0;
 			} else {
 				gst_element_get_state(this->d->pipeline, &actual_state, NULL, -1);
@@ -183,7 +184,8 @@ touch_handle_down(void *data, struct wl_touch *wl_touch,
 			if (diff < 600) {
 				//g_print("--> DOUBLE TAP\n");
 				gst_element_set_state (this->d->pipeline, GST_STATE_NULL);
-				gtk_main_quit();
+				g_main_loop_quit (loop);
+				exit(1); //force to quit application
 			} else {
 				gst_element_get_state(this->d->pipeline, &actual_state, NULL, -1);
 				if (actual_state == GST_STATE_PAUSED)
@@ -461,7 +463,8 @@ button_notify_event_cb (GtkWidget      *widget,
 				if (diff < 600) {
 					//g_print("--> DOUBLE TAP\n");
 					gst_element_set_state (d->pipeline, GST_STATE_NULL);
-					gtk_main_quit();
+					g_main_loop_quit (loop);
+					exit(1); //force to quit application
 				} else {
 					gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
 					if (actual_state == GST_STATE_PAUSED)
@@ -505,7 +508,8 @@ touch_notify_event_cb (GtkWidget      *widget,
 				if (diff < 600) {
 					g_print("--> DOUBLE TAP\n");
 					gst_element_set_state (d->pipeline, GST_STATE_NULL);
-					gtk_main_quit();
+					g_main_loop_quit (loop);
+					exit(1); //force to quit application
 				} else {
 					gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
 					if (actual_state == GST_STATE_PAUSED)
@@ -639,7 +643,7 @@ build_window (DemoApp * d)
 	d->window_widget = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title (GTK_WINDOW(d->window_widget), "GStreamer Wayland GTK ");
 	gtk_window_set_transient_for (GTK_WINDOW(d->window_widget), NULL);
-	g_signal_connect (GTK_WINDOW(d->window_widget), "destroy", G_CALLBACK (gtk_main_quit), NULL);
+	g_signal_connect (GTK_WINDOW(d->window_widget), "destroy", G_CALLBACK (g_main_loop_quit), loop);
 	//if (!nofullscreen)
 		gtk_window_fullscreen(GTK_WINDOW(d->window_widget));
 	//else {
@@ -713,7 +717,8 @@ keyboard_cb (const gchar key_input, gpointer user_data)
 	case 'q':
 		gst_element_set_state (d->pipeline, GST_STATE_NULL);
 		local_kb_set_key_handler (NULL);
-		gtk_main_quit();
+		g_main_loop_quit(loop);
+		exit(1); //force to quit application
 		break;
 	}
 }
