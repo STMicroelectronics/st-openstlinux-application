@@ -34,6 +34,8 @@ static gboolean nofullscreen = FALSE;
 static guint32 last_touch_tap = 0;
 static guint32 last_pointer_tap = 0;
 
+static GMainLoop *loop;
+
 static GOptionEntry entries[] = {
 	{"No Fullscreen", 'F', 0, G_OPTION_ARG_NONE, &nofullscreen,
 		"Do not put video on fullscreeen", NULL},
@@ -68,8 +70,6 @@ on_about_to_finish (GstElement * playbin, DemoApp * d)
 	g_print ("Now playing %s\n", d->argv[d->current_uri]);
 	g_object_set (playbin, "uri", d->argv[d->current_uri], NULL);
 }
-
-
 
 // ---------------------------------------------------
 // ---------------------------------------------------
@@ -196,19 +196,19 @@ touch_handle_down(void *data, struct wl_touch *wl_touch,
 		}
 	}
 }
- 
+
 static void
 touch_handle_up(void *data, struct wl_touch *wl_touch,
 		uint32_t serial, uint32_t time, int32_t id)
 {
 }
- 
+
 static void
 touch_handle_motion(void *data, struct wl_touch *wl_touch,
 		    uint32_t time, int32_t id, wl_fixed_t x_w, wl_fixed_t y_w)
 {
 }
- 
+
 static void
 touch_handle_frame(void *data, struct wl_touch *wl_touch)
 {
@@ -420,6 +420,14 @@ gstreamer_bus_callback (struct _GstBus * bus, GstMessage * message, void *data)
 	case GST_MESSAGE_STATE_CHANGED:
 		msg_state_changed (bus, message, data);
 		break;
+
+	case GST_MESSAGE_EOS:
+		/* end-of-stream */
+		g_print ("EOS\n");
+		gst_element_set_state (d->pipeline, GST_STATE_NULL);
+		g_main_loop_quit (loop);
+		break;
+
 	default:
 		/* unhandled message */
 		break;
@@ -840,7 +848,7 @@ main (int argc, char **argv)
 	}
 
 	bus = gst_pipeline_get_bus (GST_PIPELINE (d->pipeline));
-	bus_watch_id = gstreamer_bus_callback (bus, gstreamer_bus_callback, NULL);
+	bus_watch_id = gst_bus_add_watch (bus, gstreamer_bus_callback, d);
 	gst_bus_set_sync_handler (bus, bus_sync_handler, d, NULL);
 	gst_object_unref (bus);
 
@@ -916,8 +924,8 @@ main (int argc, char **argv)
 			sleep(1);
 		}
 	}
-
-	gtk_main ();
+	loop = g_main_loop_new (NULL, FALSE);
+	g_main_loop_run (loop);
 
 	local_kb_set_key_handler (NULL);
 
@@ -926,6 +934,7 @@ main (int argc, char **argv)
 	g_object_unref (d->window_widget);
 	g_source_remove (bus_watch_id);
 	g_slice_free (DemoApp, d);
+	g_main_loop_unref (loop);
 
 	g_free(graph);
 
