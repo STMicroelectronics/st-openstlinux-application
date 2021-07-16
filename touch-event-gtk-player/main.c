@@ -401,12 +401,14 @@ gstreamer_bus_callback (struct _GstBus * bus, GstMessage * message, void *data)
 {
 	DemoApp *d = data;
 
-	g_print ("Got %s message\n", GST_MESSAGE_TYPE_NAME (message));
+	//g_print ("Got %s message\n", GST_MESSAGE_TYPE_NAME (message));
 
 	switch (GST_MESSAGE_TYPE (message)) {
 	case GST_MESSAGE_ERROR:{
 		GError *err;
 		gchar *debug;
+
+		g_print ("Got %s message\n", GST_MESSAGE_TYPE_NAME (message));
 
 		gst_message_parse_error (message, &err, &debug);
 		g_print ("Error: %s\n", err->message);
@@ -420,14 +422,17 @@ gstreamer_bus_callback (struct _GstBus * bus, GstMessage * message, void *data)
 	}
 
 	case GST_MESSAGE_STATE_CHANGED:
+		g_print ("Got %s message\n", GST_MESSAGE_TYPE_NAME (message));
 		msg_state_changed (bus, message, data);
 		break;
 
 	case GST_MESSAGE_EOS:
 		/* end-of-stream */
+		g_print ("Got %s message\n", GST_MESSAGE_TYPE_NAME (message));
 		g_print ("EOS\n");
 		gst_element_set_state (d->pipeline, GST_STATE_NULL);
 		g_main_loop_quit (loop);
+		exit(1);
 		break;
 
 	default:
