@@ -261,8 +261,15 @@ build_window (DemoApp * d)
 	gtk_widget_set_name(d->window_widget, "transparent_bg");
 
 	sink = gst_bin_get_by_name (GST_BIN (d->pipeline), "gtkwsink");
-	if (!sink && !g_strcmp0 (G_OBJECT_TYPE_NAME (d->pipeline), "GstPlayBin"))
+	if (!sink && !g_strcmp0 (G_OBJECT_TYPE_NAME (d->pipeline), "GstPlayBin")) {
 		g_object_get (d->pipeline, "video-sink", &sink, NULL);
+		if (sink && g_strcmp0 (G_OBJECT_TYPE_NAME (sink), "GstGtkWaylandSink") != 0
+				&& GST_IS_BIN (sink)) {
+			GstBin *sinkbin = GST_BIN (sink);
+			sink = gst_bin_get_by_name (sinkbin, "gtkwsink");
+			gst_object_unref (sinkbin);
+		}
+	}
 	g_assert (sink);
 	g_assert (!g_strcmp0 (G_OBJECT_TYPE_NAME (sink), "GstGtkWaylandSink"));
 
