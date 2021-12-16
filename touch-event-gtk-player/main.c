@@ -159,6 +159,7 @@ build_window (DemoApp * d)
 	/* windows */
 	d->window_widget = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title (GTK_WINDOW(d->window_widget), "GStreamer Wayland GTK ");
+	gtk_window_set_default_size (GTK_WINDOW (d->window_widget), 320, 240);
 	g_signal_connect (d->window_widget, "destroy",
 			G_CALLBACK (gtk_widget_destroyed), &d->window_widget);
 	g_signal_connect_swapped (d->window_widget, "destroy",
