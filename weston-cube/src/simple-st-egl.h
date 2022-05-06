@@ -73,7 +73,7 @@ struct display {
 	struct wl_display *display;
 	struct wl_registry *registry;
 	struct wl_compositor *compositor;
-	struct zxdg_shell_v6 *shell;
+	struct xdg_wm_base *shell;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
 	struct wl_seat *seat;
 	struct wl_pointer *pointer;
@@ -110,8 +110,8 @@ struct window {
 	uint32_t benchmark_time, frames, frames_cumul;
 	struct wl_egl_window *native;
 	struct wl_surface *surface;
-	struct zxdg_surface_v6 *xdg_surface;
-	struct zxdg_toplevel_v6 *xdg_toplevel;
+	struct xdg_surface *xdg_surface;
+	struct xdg_toplevel *xdg_toplevel;
 	EGLSurface egl_surface;
 	struct wl_callback *callback;
 	int fullscreen, opaque, buffer_size, frame_sync, background;

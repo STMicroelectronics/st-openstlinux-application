@@ -83,8 +83,8 @@ if use_wayland
     protocols_datadir = wl_protocol_dep.get_pkgconfig_variable('pkgdatadir')
 
     protocol_defs = [
-        ['/unstable/xdg-shell/xdg-shell-unstable-v6.xml',
-         'xdg-shell-unstable-v6-protocol.c', 'xdg-shell-unstable-v6-client-protocol.h'],
+        ['/stable/xdg-shell/xdg-shell.xml',
+         'xdg-shell-protocol.c', 'xdg-shell-client-protocol.h'],
         ['/unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml',
          'linux-dmabuf-unstable-v1-protocol.c', 'linux-dmabuf-unstable-v1-client-protocol.h'],
     ]
