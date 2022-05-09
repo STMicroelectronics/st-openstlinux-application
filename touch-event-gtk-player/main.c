@@ -33,12 +33,16 @@ static gchar *shader_file = NULL;
 static gboolean nofullscreen = FALSE;
 static guint32 last_touch_tap = 0;
 static guint32 last_pointer_tap = 0;
+static gint window_width = 480;
+static gint window_height = 272;
 
 static GMainLoop *loop;
 
 static GOptionEntry entries[] = {
 	{"No Fullscreen", 'F', 0, G_OPTION_ARG_NONE, &nofullscreen,
 		"Do not put video on fullscreeen", NULL},
+	{"width", 'w', 0, G_OPTION_ARG_INT, &window_width, "Windows Width", NULL},
+	{"height", 'h', 0, G_OPTION_ARG_INT, &window_height, "Windows Height", NULL},
 	{"graph", 0, 0, G_OPTION_ARG_STRING, &graph, "Gstreamer graph to use", NULL},
 	{"shader", 0, 0, G_OPTION_ARG_STRING, &shader_file, "Gstreamer shader graph to use", NULL},
 
@@ -647,9 +651,10 @@ build_window (DemoApp * d)
 	/* windows */
 	d->window_widget = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title (GTK_WINDOW(d->window_widget), "GStreamer Wayland GTK ");
+	gtk_window_set_default_size (GTK_WINDOW (d->window_widget), window_width, window_height);
 	gtk_window_set_transient_for (GTK_WINDOW(d->window_widget), NULL);
 	g_signal_connect (GTK_WINDOW(d->window_widget), "destroy", G_CALLBACK (g_main_loop_quit), loop);
-	//if (!nofullscreen)
+	if (!nofullscreen)
 		gtk_window_fullscreen(GTK_WINDOW(d->window_widget));
 	//else {
 	//	gtk_window_set_decorated (GTK_WINDOW(d->window_widget), FALSE);
@@ -666,7 +671,6 @@ build_window (DemoApp * d)
 	gtk_style_context_add_provider(gtk_widget_get_style_context(d->window_widget),
                                    GTK_STYLE_PROVIDER(provider),
                                    GTK_STYLE_PROVIDER_PRIORITY_USER);
-
 	g_object_unref(provider);
 
 	gtk_widget_set_name(d->window_widget, "transparent_bg");
