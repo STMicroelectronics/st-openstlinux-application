@@ -533,11 +533,15 @@ buffer_to_image(struct decoder *dec, GstBuffer *buf)
 				EGL_LINUX_DMA_BUF_EXT, NULL, attr);
 	}
 
+	if (is_dmabuf_mem) {
+		close(dmabuf_fd);
+	} else {
 #if !defined(HAVE_GBM_BO_MAP) || (HAVE_GBM_BO_MAP == 0)
 	/* Cleanup */
 	for (unsigned i = 0; i < nmems; i++)
 		close(planes[i].fd);
 #endif
+	}
 
 	return image;
 }
