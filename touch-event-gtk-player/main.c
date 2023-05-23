@@ -41,7 +41,6 @@ typedef struct
 	gint current_uri;             /* index for argv */
 
 	guint32 last_touch_tap;
-	guint32 last_pointer_tap;
 } DemoApp;
 
 static void
@@ -133,41 +132,21 @@ gstreamer_bus_callback (GstBus * bus, GstMessage * message, void *data)
 }
 
 static gboolean
-button_notify_event_cb (GtkWidget * widget, GdkEventButton * event,
+button_notify_event_cb (GtkWidget * widget, GdkEventButton * eventButton,
 	gpointer data)
 {
 	DemoApp *d = data;
-	guint32 diff;
-	GstState actual_state;
 
-	g_print("--> %s\n", __FUNCTION__);
+	if (eventButton->type == GDK_BUTTON_PRESS) {
+		GstState actual_state;
 
-	if (event->button == GDK_BUTTON_PRIMARY) {
-		if (d->last_pointer_tap == 0) {
-			d->last_pointer_tap = event->time;
-			gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
-			if (actual_state == GST_STATE_PAUSED)
-				gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-			else
-				gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
-		} else {
-			diff = event->time - d->last_pointer_tap;
-			if (d->last_pointer_tap != 0) {
-				d->last_pointer_tap = event->time;
-				if (diff < 600) {
-					//g_print("--> DOUBLE TAP\n");
-					g_main_loop_quit (d->loop);
-				} else {
-					gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
-					if (actual_state == GST_STATE_PAUSED)
-						gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-					else
-						gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
-					//g_print("--> SIMPLE TAP\n");
-				}
-				//g_print("--> BEGIN diff = %d\n", diff);
-			}
-		}
+		gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
+		if (actual_state == GST_STATE_PAUSED)
+			gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
+		else
+			gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
+	} else if (eventButton->type == GDK_2BUTTON_PRESS) {
+		g_main_loop_quit (d->loop);
 	}
 
 	/* We've handled the event, stop processing */
@@ -282,6 +261,12 @@ build_window (DemoApp * d)
 			G_CALLBACK (touch_notify_event_cb), d);
 	g_signal_connect (video_widget, "button-press-event",
 			G_CALLBACK (button_notify_event_cb), d);
+
+	// Override the system settings to match other demos more closely
+	g_object_set (gtk_settings_get_default (),
+			"gtk-double-click-time", 600,
+			"gtk-double-click-distance", 100,
+			NULL);
 
 	gtk_container_add(GTK_CONTAINER (d->window_widget), video_widget);
 	gtk_widget_show_all (d->window_widget);
