@@ -289,12 +289,19 @@ video_init(const struct _egl *egl, const struct _gbm *gbm, const char *filename,
 			);
 		pipeline = newpipeline;
 	} else {
-		pipeline =
-			"filesrc name=\"src\" ! decodebin name=\"decode\" ! "
-			"video/x-raw ! appsink sync=false name=\"sink\"";
+/*                pipeline =*/
+/*                        "filesrc name=\"src\" ! decodebin3 name=\"decode\" ! "*/
+/*                        "video/x-raw ! appsink sync=false name=\"sink\"";*/
+		char newdecodepipeline[1024];
 
+		snprintf(newdecodepipeline, sizeof(newdecodepipeline),
+			"filesrc name=\"src\" location=%s ! "
+			"decodebin3 name=\"decode\" ! video/x-raw ! "
+			"appsink sync=false name=\"sink\"",
+			filename);
+		pipeline = newdecodepipeline;
 	}
-	printf("GST Pipeline: %s", pipeline);
+	printf("GST Pipeline: %s\n", pipeline);
 
 	dec->pipeline = gst_parse_launch(pipeline, NULL);
 
@@ -310,11 +317,11 @@ video_init(const struct _egl *egl, const struct _gbm *gbm, const char *filename,
 		appsink_query_cb, NULL, NULL);
 	gst_object_unref(pad);
 
-	src = gst_bin_get_by_name(GST_BIN(dec->pipeline), "src");
-	if (src) {
-		g_object_set(G_OBJECT(src), "location", filename, NULL);
-		gst_object_unref(src);
-	}
+/*        src = gst_bin_get_by_name(GST_BIN(dec->pipeline), "src");*/
+/*        if (src) {*/
+/*                g_object_set(G_OBJECT(src), "location", filename, NULL);*/
+/*                gst_object_unref(src);*/
+/*        }*/
 
 	/* Configure the sink like a video sink (mimic GstVideoSink) */
 	gst_base_sink_set_max_lateness(GST_BASE_SINK(dec->sink), 20 * GST_MSECOND);
