@@ -125,6 +125,12 @@ init_egl(struct display *d, struct window *w)
 		exit(EXIT_FAILURE);
 	}
 
+	d->egl.ctx = eglCreateContext(d->egl.dpy,
+				      d->egl.conf,
+				      EGL_NO_CONTEXT,
+				      context_attribs);
+	assert(d->egl.ctx);
+
 	egl_extensions = eglQueryString(d->egl.dpy, EGL_EXTENSIONS);
 	assert(egl_extensions != NULL);
 
@@ -158,11 +164,6 @@ init_egl(struct display *d, struct window *w)
 		d->egl.name = (void *)eglGetProcAddress(#name); \
 	} while (0)
 
-	d->egl.ctx = eglCreateContext(d->egl.dpy,
-				      d->egl.conf,
-				      EGL_NO_CONTEXT,
-				      context_attribs);
-	assert(d->egl.ctx);
 
 	eglMakeCurrent(d->egl.dpy, EGL_NO_SURFACE, EGL_NO_SURFACE,
 		       d->egl.ctx);

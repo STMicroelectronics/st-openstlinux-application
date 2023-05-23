@@ -163,6 +163,12 @@ create_surface(struct window *window)
 
 	window->surface = wl_compositor_create_surface(display->compositor);
 
+	if (display->shell) {
+		create_xdg_surface(window, display);
+	} else {
+		assert(0);
+	}
+
 	window->native =
 		wl_egl_window_create(window->surface,
 				     window->geometry.width,
@@ -172,11 +178,6 @@ create_surface(struct window *window)
 						   display->egl.conf,
 						   window->native, NULL);
 
-	if (display->shell) {
-		create_xdg_surface(window, display);
-	} else {
-		assert(0);
-	}
 
 	ret = eglMakeCurrent(window->display->egl.dpy, window->egl_surface,
 			     window->egl_surface, window->display->egl.ctx);
