@@ -13,6 +13,10 @@
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
 
+/* Timeout in nanoseconds before getting out of a call on frozen pipeline */
+/* Value: 2 seconds*/
+#define GET_PIPELINE_STATE_TIMEOUT	(GST_TIME_AS_NSECONDS(2*GST_SECOND))
+
 static gchar *graph = NULL;
 static gchar *shader_file = NULL;
 static gboolean nofullscreen = FALSE;
@@ -148,6 +152,7 @@ touch_notify_event_cb (GtkWidget * widget, GdkEventTouch * eventTouch,
 	(void)widget;
 	guint32 diff;
 	GstState actual_state;
+	GstStateChangeReturn rc;
 
 	if (eventTouch->type == GDK_TOUCH_END || eventTouch->type == GDK_TOUCH_CANCEL) {
 		if (last_touch_tap == 0) {
@@ -167,8 +172,11 @@ touch_notify_event_cb (GtkWidget * widget, GdkEventTouch * eventTouch,
 					g_main_loop_quit (d->loop);
 					exit(1); //force to quit application
 				} else {
-					gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
-					if (actual_state == GST_STATE_PAUSED)
+					rc = gst_element_get_state(d->pipeline, &actual_state, NULL, GET_PIPELINE_STATE_TIMEOUT);
+					if (rc == GST_STATE_CHANGE_ASYNC) {
+						g_print ("Timeout when retrieving pipeline state\n");
+						g_main_loop_quit (d->loop);
+					} else if (actual_state == GST_STATE_PAUSED)
 						gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
 					else
 						gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
@@ -189,11 +197,15 @@ button_notify_event_cb (GtkWidget * widget, GdkEventButton * eventButton,
 {
 	DemoApp *d = data;
 	(void)widget;
+	GstStateChangeReturn rc;
 
 	if (eventButton->type == GDK_BUTTON_PRESS) {
 		GstState actual_state;
-		gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
-		if (actual_state == GST_STATE_PAUSED)
+		rc = gst_element_get_state(d->pipeline, &actual_state, NULL, GET_PIPELINE_STATE_TIMEOUT);
+		if (rc == GST_STATE_CHANGE_ASYNC) {
+			g_print ("Timeout when retrieving pipeline state\n");
+			g_main_loop_quit (d->loop);
+		} else if (actual_state == GST_STATE_PAUSED)
 			gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
 		else
 			gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
