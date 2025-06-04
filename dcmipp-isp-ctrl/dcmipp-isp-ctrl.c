@@ -1195,6 +1195,159 @@ static int set_profile(struct isp_descriptor *isp_desc, int type)
 	return ret;
 }
 
+/*
+ * Function to set the histogram configuration
+ */
+static int set_histogram(struct isp_descriptor *isp_desc, struct stm32_dcmipp_isp_histo_cfg *cfg)
+{
+	int ret;
+	struct stm32_dcmipp_params_cfg params = {
+		.module_cfg_update = STM32_DCMIPP_ISP_HISTO,
+	};
+
+	params.ctrls.histo_cfg = *cfg;
+
+	printf("Histogram config:\n\tarea (%d,%d/%dx%d) * %d/%d regions\n",
+	       cfg->left, cfg->top, cfg->width, cfg->height,
+	       cfg->hreg, cfg->vreg);
+	printf("\t %d bins, %d components, %dx%d decimation from source %d\n",
+	       cfg->bin, cfg->comp, cfg->hdec, cfg->vdec, cfg->src);
+
+	ret = apply_params(isp_desc, &params);
+	if (ret)
+		printf("Failed to apply histo config\n");
+
+	return ret;
+}
+
+static void display_histo(__u16 *bins, __u8 vreg, __u8 hreg, __u8 comp, __u8 bin)
+{
+	int i, j, k, l;
+	int cnt = 0;
+
+	for (i = 1; i < vreg; i++) {
+		for (j = 1; j < hreg; j++) {
+			printf("Region XY (%d/%d)\n", j, i);
+			for (k = 0; k < comp; k++) {
+				printf("\tComponent n'%d: ", k);
+				for (l = 0; l < bin; l++)
+					printf("%d ", bins[cnt++]);
+				printf("\n");
+			}
+		}
+	}
+}
+
+/*
+ * Read histogram from the DCMIPP ISP
+ */
+static int get_histo(struct isp_descriptor *isp_desc, bool loop, struct stm32_dcmipp_isp_histo_cfg *cfg)
+{
+	enum v4l2_buf_type type;
+	struct v4l2_format fmt;
+	struct v4l2_buffer buf;
+	struct timeval tv;
+	size_t buflen = 0;
+	fd_set fds;
+	int i, ret;
+
+	/* Set the stat profile */
+	ret = set_stat_profile(isp_desc, 0);
+	if (ret) {
+		printf("Failed to set stat capture profile\n");
+		return ret;
+	}
+
+	/* Set the histogram */
+	ret = set_histogram(isp_desc, cfg);
+	if (ret) {
+		printf("Failed to set histogram\n");
+		return ret;
+	}
+
+	/* Queue buff */
+	for (i = 0; i < isp_desc->stats_buf_nb; i++) {
+		buf.type = V4L2_BUF_TYPE_META_CAPTURE;
+		buf.memory = V4L2_MEMORY_MMAP;
+		buf.index = i;
+
+		ret = ioctl(isp_desc->stat_fd, VIDIOC_QBUF, &buf);
+		if (ret) {
+			printf("Failed to queue buffer %d\n", i);
+			return ret;
+		}
+	}
+
+	/* Start stream */
+	type = V4L2_BUF_TYPE_META_CAPTURE;
+	ret = ioctl(isp_desc->stat_fd, VIDIOC_STREAMON, &type);
+	if (ret) {
+		printf("Failed to start stream\n");
+		return ret;
+	}
+
+	FD_ZERO(&fds);
+	FD_SET(isp_desc->stat_fd, &fds);
+	tv.tv_sec = 2;
+	tv.tv_usec = 0;
+
+	do {
+		/* Wait for buff */
+		ret = select(isp_desc->stat_fd + 1, &fds, NULL, NULL, &tv);
+
+		if (ret < 0) {
+			printf("Select failed (%d)\n", ret);
+			return ret;
+		}
+		if (ret == 0) {
+			printf("Select timeout\n");
+			return -EBUSY;
+		}
+
+		/* Get a buff */
+		buf.type = V4L2_BUF_TYPE_META_CAPTURE;
+		buf.memory = V4L2_MEMORY_MMAP;
+		ret = ioctl(isp_desc->stat_fd, VIDIOC_DQBUF, &buf);
+		if (ret) {
+			printf("Failed to dequeue buffer\n");
+			return ret;
+		}
+
+		/* Print result */
+		printf("Location Pre-demosaicing\n");
+		print_average(isp_desc->stats[buf.index]->pre.average_RGB);
+		print_bins(isp_desc->stats[buf.index]->pre.bins);
+		printf("Location Post-demosaicing\n");
+		print_average(isp_desc->stats[buf.index]->post.average_RGB);
+		print_bins(isp_desc->stats[buf.index]->post.bins);
+		printf("Histogram\n");
+		display_histo(isp_desc->stats[buf.index]->histograms,
+			      cfg->vreg + 1, cfg->hreg + 1, cfg->comp < 4 ? 1 : 4,
+			      cfg->bin == 0 ? 4 : cfg->bin == 1 ? 16 : cfg->bin == 2 ? 64 : 256);
+
+		/* Queue buf */
+		ret = ioctl(isp_desc->stat_fd, VIDIOC_QBUF, &buf);
+		if (ret) {
+			printf("Failed to queue buffer %d\n", i);
+			return ret;
+		}
+
+		/* Wait to let user see printf output */
+		if (loop)
+			usleep(100 * 1000);
+	} while (loop);
+
+	/* Stop stream */
+	type = V4L2_BUF_TYPE_META_CAPTURE;
+	ret = ioctl(isp_desc->stat_fd, VIDIOC_STREAMOFF, &type);
+	if (ret) {
+		printf("Failed to stop stream\n");
+		return ret;
+	}
+
+	return ret;
+}
+
 static void usage(const char *argv0)
 {
 	printf("%s [options]\n", argv0);
@@ -1210,9 +1363,37 @@ static void usage(const char *argv0)
 	printf("                                  1 : TL84 (fluo lamp)\n");
 	printf("-s, --stat                  Read the stat\n");
 	printf("-S, --STAT                  Read the stat continuously\n");
+	printf("--histo_top                 Top raw of the histogram area\n");
+	printf("--histo_left		    Left column of the histogram area\n");
+	printf("--histo_width		    Width of a region of histogram\n");
+	printf("--histo_height		    Height of a region of histogram\n");
+	printf("--histo_h_region            Number of horizontal region of histogram\n");
+	printf("--histo_v_region            Number of vertical region of histogram\n");
+	printf("--histo_comp                Component(s) of histogram (0 to 4)\n");
+	printf("--histo_src                 Point of histogram capture within the pipeline\n");
+	printf("--histo_bins                Number of bins to capture per histogram\n");
+	printf("--histo_dyn                 Dynamic of pixels to capture in histogram\n");
+	printf("--histo_h_decimation        Horizontal decimation in histogram\n");
+	printf("--histo_v_decimation        Vertical decimation in histogram\n");
 	printf("--help                      Display usage\n");
 	printf("-v                          Verbose output\n");
 }
+
+enum {
+	HISTO_TOP = 0,
+	HISTO_LEFT,
+	HISTO_WIDTH,
+	HISTO_HEIGHT,
+	HISTO_H_REGION,
+	HISTO_V_REGION,
+	HISTO_COMP,
+	HISTO_SRC,
+	HISTO_BINS,
+	HISTO_DYN,
+	HISTO_H_DECIMATION,
+	HISTO_V_DECIMATION,
+};
+
 
 static struct option opts[] = {
 	{"gain", no_argument, 0, 'g'},
@@ -1220,6 +1401,21 @@ static struct option opts[] = {
 	{"illuminant", required_argument, 0, 'i'},
 	{"stat", no_argument, 0, 's'},
 	{"STAT", no_argument, 0, 'S'},
+	/* Histogram related */
+	{"histo", no_argument, 0, 'h'},
+	{"HISTO", no_argument, 0, 'H'},
+	{"histo_top", required_argument, 0, HISTO_TOP},
+	{"histo_left", required_argument, 0, HISTO_LEFT},
+	{"histo_width", required_argument, 0, HISTO_WIDTH},
+	{"histo_height", required_argument, 0, HISTO_HEIGHT},
+	{"histo_h_region", required_argument, 0, HISTO_H_REGION},
+	{"histo_v_region", required_argument, 0, HISTO_V_REGION},
+	{"histo_comp", required_argument, 0, HISTO_COMP},
+	{"histo_src", required_argument, 0, HISTO_SRC},
+	{"histo_bins", required_argument, 0, HISTO_BINS},
+	{"histo_dyn", required_argument, 0, HISTO_DYN},
+	{"histo_h_decimation", required_argument, 0, HISTO_H_DECIMATION},
+	{"histo_v_decimation", required_argument, 0, HISTO_V_DECIMATION},
 	{ },
 };
 
@@ -1227,8 +1423,9 @@ int main(int argc, char *argv[])
 {
 	static struct isp_descriptor isp_desc;
 	int ret, opt;
-	bool do_call_stat, do_call_stat_cont;
+	bool do_call_stat, do_call_stat_cont, do_call_histo, do_call_histo_cont;
 	struct stm32_dcmipp_stat_buf *stats;
+	struct stm32_dcmipp_isp_histo_cfg histo_cfg = { 0 };
 	bool verbose = false;
 
 	if ((argc == 1) || ((argc == 2) && !strcmp(argv[1], "--help"))) {
@@ -1268,8 +1465,10 @@ int main(int argc, char *argv[])
 
 	do_call_stat = false;
 	do_call_stat_cont = false;
+	do_call_histo = false;
+	do_call_histo_cont = false;
 
-	while ((opt = getopt_long(argc, argv, "vgc:i:sS", opts, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "hHvgc:i:sS", opts, NULL)) != -1) {
 		switch (opt) {
 		case 'g':
 			ret = set_sensor_gain_exposure(&isp_desc, verbose);
@@ -1301,10 +1500,59 @@ int main(int argc, char *argv[])
 		case 'v':
 			/* Just to have getopt_long not complain */
 			break;
+		case 'h':
+			do_call_histo = true;
+			break;
+		case 'H':
+			do_call_histo_cont = true;
+			break;
+		case HISTO_TOP:
+			histo_cfg.top = atoi(optarg);
+			break;
+		case HISTO_LEFT:
+			histo_cfg.left = atoi(optarg);
+			break;
+		case HISTO_WIDTH:
+			histo_cfg.width = atoi(optarg);
+			break;
+		case HISTO_HEIGHT:
+			histo_cfg.height = atoi(optarg);
+			break;
+		case HISTO_H_REGION:
+			histo_cfg.hreg = atoi(optarg);
+			break;
+		case HISTO_V_REGION:
+			histo_cfg.vreg = atoi(optarg);
+			break;
+		case HISTO_COMP:
+			histo_cfg.comp = atoi(optarg);
+			break;
+		case HISTO_SRC:
+			histo_cfg.src = atoi(optarg);
+			break;
+		case HISTO_BINS:
+			histo_cfg.bin = atoi(optarg);
+			break;
+		case HISTO_DYN:
+			histo_cfg.dyn = atoi(optarg);
+			break;
+		case HISTO_H_DECIMATION:
+			histo_cfg.hdec = atoi(optarg);
+			break;
+		case HISTO_V_DECIMATION:
+			histo_cfg.vdec = atoi(optarg);
+			break;
 		default:
 			printf("Invalid option -%c\n", opt);
 			return 1;
 		}
+	}
+
+	if (do_call_histo || do_call_histo_cont) {
+		ret = get_histo(&isp_desc, do_call_histo_cont ? true : false, &histo_cfg);
+
+		if (ret)
+			return 1;
 	}
 
 	if (do_call_stat) {
