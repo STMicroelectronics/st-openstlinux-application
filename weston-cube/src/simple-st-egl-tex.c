@@ -703,7 +703,7 @@ signal_int(int signum)
 	running = 0;
 }
 
-static const char *shortopts = "fodsi:1:3:6:v:c:bh";
+static const char *shortopts = "fod:si:1:3:6:v:c:bh";
 
 static const struct option longopts[] = {
 	{"fullscreen",    no_argument,       0, 'f'},
@@ -757,7 +757,7 @@ main(int argc, char **argv)
 	struct sigaction sigint;
 	struct display *display;
 	struct window  window  = { 0 };
-	char const *drm_render_node = DRM_RENDER_NODE;
+	char *drm_render_node = DRM_RENDER_NODE;
 	int i, ret = 0, opt;
 	const char *video = NULL;
 
@@ -790,7 +790,7 @@ main(int argc, char **argv)
 			window.opaque = 1;
 			break;
 		case 'd':
-			drm_render_node = optarg;
+			drm_render_node = strdup(optarg);
 			break;
 		case 's':
 			window.buffer_size = 16;
