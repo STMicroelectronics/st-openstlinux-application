@@ -23,6 +23,7 @@ static gboolean nofullscreen = FALSE;
 static gint window_width = 480;
 static gint window_height = 272;
 static guint32 last_touch_tap = 0;
+static gboolean videoloop = FALSE;
 
 static GOptionEntry entries[] = {
 	{"nofullscreen", 'F', 0, G_OPTION_ARG_NONE, &nofullscreen,
@@ -31,6 +32,9 @@ static GOptionEntry entries[] = {
 	{"height", 'h', 0, G_OPTION_ARG_INT, &window_height, "Windows Height", NULL},
 	{"graph", 0, 0, G_OPTION_ARG_STRING, &graph, "Gstreamer graph to use", NULL},
 	{"shader", 0, 0, G_OPTION_ARG_STRING, &shader_file, "Gstreamer shader graph to use", NULL},
+
+	{"loop", 'l', 0, G_OPTION_ARG_NONE, &videoloop, "Gstreamer loop playback", NULL},
+
 
 	{NULL}
 };
@@ -127,7 +131,12 @@ gstreamer_bus_callback (GstBus * bus, GstMessage * message, void *data)
 	case GST_MESSAGE_EOS:
 		/* end-of-stream */
 		g_print ("EOS\n");
-		g_main_loop_quit (d->loop);
+		if (videoloop) {
+			gst_element_seek (d->pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH,
+                         GST_SEEK_TYPE_SET, 0,GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+			 gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
+		} else
+			g_main_loop_quit (d->loop);
 		break;
 
 	default:
