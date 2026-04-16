@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2014-2015 Collabora Ltd.
- *   @author George Kiagiadakis <george.kiagiadakis@collabora.com>
- * Copyright (C) 2019, STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2026, STMicroelectronics - All Rights Reserved
  *   @author Christophe Priouzeau <christophe.priouzeau@st.com>
  *
  * SPDX-License-Identufier: GPL-2.0+
@@ -17,8 +15,6 @@
 /* Value: 2 seconds*/
 #define GET_PIPELINE_STATE_TIMEOUT	(GST_TIME_AS_NSECONDS(2*GST_SECOND))
 
-static gchar *graph = NULL;
-static gchar *shader_file = NULL;
 static gboolean nofullscreen = FALSE;
 static gint window_width = 480;
 static gint window_height = 272;
@@ -30,8 +26,6 @@ static GOptionEntry entries[] = {
 		"Do not put video on fullscreeen", NULL},
 	{"width", 'w', 0, G_OPTION_ARG_INT, &window_width, "Windows Width", NULL},
 	{"height", 'h', 0, G_OPTION_ARG_INT, &window_height, "Windows Height", NULL},
-	{"graph", 0, 0, G_OPTION_ARG_STRING, &graph, "Gstreamer graph to use", NULL},
-	{"shader", 0, 0, G_OPTION_ARG_STRING, &shader_file, "Gstreamer shader graph to use", NULL},
 
 	{"loop", 'l', 0, G_OPTION_ARG_NONE, &videoloop, "Gstreamer loop playback", NULL},
 
@@ -50,11 +44,29 @@ typedef struct
 
 	gchar **argv;
 	gint current_uri;             /* index for argv */
-	gint max_uris; 
+	gint max_uri;
+
+	guint timer_id;
 } DemoApp;
 
-/* Protoype */
-static gboolean next_video(DemoApp * d);
+
+gboolean play_callback(gpointer userdata) {
+	DemoApp *d = userdata;
+	GstState actual_state;
+
+	gst_element_get_state(d->pipeline, &actual_state, NULL, GET_PIPELINE_STATE_TIMEOUT);
+	if (actual_state == GST_STATE_PAUSED) {
+		g_print("callback to request playing\n");
+		gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
+	} else if (actual_state == GST_STATE_PLAYING) {
+		g_print("callback to request pausing\n");
+		gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
+	} else {
+		return FALSE;
+	}
+
+   return TRUE;
+}
 
 static void
 msg_state_changed (GstBus * bus, GstMessage * message, gpointer user_data)
@@ -125,14 +137,12 @@ gstreamer_bus_callback (GstBus * bus, GstMessage * message, void *data)
 	case GST_MESSAGE_EOS:
 		/* end-of-stream */
 		g_print ("EOS\n");
-		if (! next_video(d)) {
-			if (videoloop) {
-				gst_element_seek (d->pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH,
-					 GST_SEEK_TYPE_SET, 0,GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
-				 gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-			} else
-				g_main_loop_quit (d->loop);
-		}
+		if (videoloop) {
+			gst_element_seek (d->pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH,
+                         GST_SEEK_TYPE_SET, 0,GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+			 gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
+		} else
+			g_main_loop_quit (d->loop);
 		break;
 
 	default:
@@ -156,17 +166,10 @@ touch_notify_event_cb (GtkWidget * widget, GdkEventTouch * eventTouch,
 	DemoApp *d = data;
 	(void)widget;
 	guint32 diff;
-	GstState actual_state;
-	GstStateChangeReturn rc;
 
 	if (eventTouch->type == GDK_TOUCH_END || eventTouch->type == GDK_TOUCH_CANCEL) {
 		if (last_touch_tap == 0) {
 			last_touch_tap = eventTouch->time;
-			gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
-			if (actual_state == GST_STATE_PAUSED)
-				gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-			else
-				gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
 		} else {
 			diff = eventTouch->time - last_touch_tap;
 			if (last_touch_tap != 0) {
@@ -176,22 +179,10 @@ touch_notify_event_cb (GtkWidget * widget, GdkEventTouch * eventTouch,
 					gst_element_set_state (d->pipeline, GST_STATE_NULL);
 					g_main_loop_quit (d->loop);
 					exit(1); //force to quit application
-				} else {
-					rc = gst_element_get_state(d->pipeline, &actual_state, NULL, GET_PIPELINE_STATE_TIMEOUT);
-					if (rc == GST_STATE_CHANGE_ASYNC) {
-						g_print ("Timeout when retrieving pipeline state\n");
-						g_main_loop_quit (d->loop);
-					} else if (actual_state == GST_STATE_PAUSED)
-						gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-					else
-						gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
-					//g_print("--> SIMPLE TAP\n");
 				}
-				//g_print("--> BEGIN diff = %d\n", diff);
 			}
 		}
 	}
-
 	/* We've handled the event, stop processing */
 	return TRUE;
 }
@@ -240,9 +231,6 @@ build_window (DemoApp * d)
 
 	if (!nofullscreen)
 		gtk_window_fullscreen(GTK_WINDOW(d->window_widget));
-	//else {
-	//	gtk_window_set_decorated (GTK_WINDOW(d->window_widget), FALSE);
-	//}
 
 	/* styling background color to black */
 	const char *data = "#transparent_bg,GtkDrawingArea {\n"
@@ -295,75 +283,16 @@ build_window (DemoApp * d)
 	gst_object_unref (sink);
 }
 
-static void
-print_keyboard_help (void)
-{
-	g_print ("\n\nInteractive mode - keyboard controls:\n\n");
-	g_print ("\tp:   Pause/Play\n");
-	g_print ("\tq:   quit\n");
-	g_print ("\n");
-}
-
-static void
-keyboard_cb (const gchar key_input, gpointer user_data)
-{
-	DemoApp *d = user_data;
-	gchar key = '\0';
-
-	/* only want to switch/case on single char, not first char of string */
-	if (key_input != '\0')
-		key = g_ascii_tolower (key_input);
-
-	switch (key) {
-	case 'h':
-		print_keyboard_help ();
-		break;
-	case 'p':
-	{
-		GstState actual_state;
-		gst_element_get_state(d->pipeline, &actual_state, NULL, -1);
-		if (actual_state == GST_STATE_PLAYING)
-			gst_element_set_state (d->pipeline, GST_STATE_PAUSED);
-		else {
-/*                        switch (actual_state){*/
-/*                        case GST_STATE_VOID_PENDING:*/
-/*                                g_print("keyboard_cb state: GST_STATE_VOID_PENDING\n");*/
-/*                                break;*/
-/*                        case GST_STATE_NULL:*/
-/*                                g_print("keyboard_cb state: GST_STATE_NULL\n");*/
-/*                                break;*/
-/*                        case GST_STATE_READY:*/
-/*                                g_print("keyboard_cb state: GST_STATE_READY\n");*/
-/*                                break;*/
-/*                        case GST_STATE_PAUSED:*/
-/*                                g_print("keyboard_cb state: GST_STATE_PAUSED\n");*/
-/*                                break;*/
-/*                        case GST_STATE_PLAYING:*/
-/*                                g_print("keyboard_cb state: GST_STATE_PLAYING\n");*/
-/*                                break;*/
-/*                        }*/
-			gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-		}
-		break;
-	}
-	case 'q':
-		g_main_loop_quit(d->loop);
-		break;
-	default:
-		break;
-	}
-}
-
 static gboolean
 io_callback (GIOChannel * io, GIOCondition condition, gpointer data)
 {
 	gchar in;
 	GError *error = NULL;
 	(void)condition;
+	(void)data;
 
 	switch (g_io_channel_read_chars (io, &in, 1, NULL, &error)) {
 	case G_IO_STATUS_NORMAL:
-		keyboard_cb(in, data);
 		return TRUE;
 	case G_IO_STATUS_ERROR:
 		g_printerr ("IO error: %s\n", error->message);
@@ -397,21 +326,6 @@ local_kb_set_key_handler (DemoApp *d, gboolean enable)
 	}
 }
 
-static gboolean next_video(DemoApp * d)
-{
-	if (++d->current_uri >= d->max_uris)
-		return FALSE;
-
-	g_print ("Now playing %s\n", d->argv[d->current_uri]);
-
-	gst_element_set_state (d->pipeline, GST_STATE_READY);
-
-	g_object_set (d->pipeline, "uri", d->argv[d->current_uri], NULL);
-
-	gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-	return TRUE;
-}
-
 int
 main (int argc, char **argv)
 {
@@ -425,7 +339,7 @@ main (int argc, char **argv)
 	gtk_init (&argc, &argv);
 	gst_init (&argc, &argv);
 
-	context = g_option_context_new ("- waylandsink gtk demo");
+	context = g_option_context_new ("- waylandsink play/pause gtk demo");
 	g_option_context_add_main_entries (context, entries, NULL);
 	if (!g_option_context_parse (context, &argc, &argv, &error)) {
 		g_option_context_free (context);
@@ -436,7 +350,7 @@ main (int argc, char **argv)
 	if (argc > 1) {
 		d->argv = argv;
 		d->current_uri = 1;
-		d->max_uris = argc;
+		d->max_uri = argc;
 
 		d->pipeline = gst_parse_launch ("playbin3 video-sink='gtkwaylandsink name=gtkwsink' ", &error);
 		if (error)
@@ -445,50 +359,11 @@ main (int argc, char **argv)
 		g_object_set (d->pipeline, "uri", argv[d->current_uri], NULL);
 
 	} else {
-		if (graph != NULL) {
-			if (strstr(graph, "gtkwaylandsink") != NULL) {
-				d->pipeline = gst_parse_launch (graph, NULL);
-			} else {
-				g_print("ERROR: graph does not contain gtkwaylandsink !!!\n");
-				ret = 1;
-				goto out;
-			}
-		} else if (shader_file != NULL) {
-			gchar *fragment_content;
-			GFile *file;
-			GstElement *customshader;
-
-			d->pipeline = gst_parse_launch ("v4l2src ! "
-				"video/x-raw, format=YUY2, width=320, height=240, framerate=(fraction)15/1 ! "
-				"videorate  ! video/x-raw,framerate=(fraction)5/1  ! "
-				"queue ! videoconvert ! video/x-raw,format=RGBA ! "
-				"queue ! glupload ! queue ! glshader name=customshader ! queue ! gldownload ! "
-				"queue ! videoconvert ! "
-				"queue ! gtkwaylandsink name=gtkwsink", &error);
-			if (error)
-				goto out;
-
-			file = g_file_new_for_path (shader_file);
-			g_file_load_contents (file, NULL, &fragment_content, NULL, NULL, &error);
-			g_object_unref (file);
-			if (error)
-				goto out;
-
-			customshader = gst_bin_get_by_name(GST_BIN(d->pipeline), "customshader");
-			g_assert(customshader);
-
-			//g_print("set fragment, content: \n%s\n", fragment_content);
-			g_object_set(customshader, "fragment", fragment_content, NULL);
-
-			gst_object_unref (customshader);
-			g_free (fragment_content);
-		} else {
-			d->pipeline = gst_parse_launch ("videotestsrc pattern=18 "
-					"background-color=0x000062FF ! gtkwaylandsink name=gtkwsink",
-					&error);
-			if (error)
-				goto out;
-		}
+		d->pipeline = gst_parse_launch ("videotestsrc pattern=18 "
+				"background-color=0x000062FF ! gtkwaylandsink name=gtkwsink",
+				&error);
+		if (error)
+			goto out;
 	}
 
 	d->loop = g_main_loop_new (NULL, FALSE);
@@ -502,6 +377,8 @@ main (int argc, char **argv)
 	g_print ("Press 'h' to see a list of keyboard shortcuts.\n");
 
 	gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
+
+	d->timer_id = g_timeout_add(2000, play_callback, d);
 
 	g_main_loop_run (d->loop);
 
@@ -526,9 +403,6 @@ out:
 		gtk_widget_destroy (d->window_widget);
 	}
 	g_clear_pointer (&d->loop, g_main_loop_unref);
-
-	g_free(graph);
-	g_free(shader_file);
 
 	return ret;
 }

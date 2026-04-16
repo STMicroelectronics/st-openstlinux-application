@@ -32,12 +32,24 @@ libm = cc.find_library('m', required : false)
 tegp_sources = [
 	'main.c'
 ]
+ppgp_sources = [
+	'play_pause.c'
+]
+
 srcinc = include_directories('.')
 
 exe_deps = [dep_gtk3, dep_gst, dep_gst_video, dep_gst_wayland, dep_gst_base, dep_wayland, dep_glib, dep_threads, libm]
 
 executable('touch-event-gtk-player',
 	tegp_sources,
+	install: true,
+	c_args : c_local_args,
+	include_directories: [srcinc],
+	dependencies : exe_deps,
+)
+
+executable('play_pause-gtk-player',
+	ppgp_sources,
 	install: true,
 	c_args : c_local_args,
 	include_directories: [srcinc],
